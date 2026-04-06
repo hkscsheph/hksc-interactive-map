@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Interactive Floor Map</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js"></script>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      /* background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); */
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    .container {
+      max-width: 100%;
+      /* perspective: 2000px;
+      perspective-origin: center center; */
+    }
+
+    .header {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      text-align: center;
+      color: white;
+      padding: 20px 20px 20px 20px;
+      z-index: 5;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      pointer-events: none;
+    }
+
+    .header h1 {
+      font-size: 28px;
+      margin-bottom: 8px;
+    }
+
+    .header p {
+      font-size: 14px;
+      opacity: 0.9;
+    }
+
+    .scroll-container {
+      position: relative;
+      height: 600vh;
+      margin-top: 80px;
+    }
+
+    .floors-wrapper {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+      z-index: 10;
+      padding-top: 80px;
+    }
+
+    .floors-stack {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      transform-style: preserve-3d;
+    }
+
+    .floor-card {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, 0);
+      background: transparent;
+      border-radius: 12px;
+      overflow: hidden;
+      cursor: pointer;
+      pointer-events: auto;
+      transform-style: preserve-3d;
+      transition: pointer-events 0.3s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .floor-card.inactive {
+      pointer-events: none;
+    }
+
+    .floor-card.active {
+      pointer-events: auto;
+      z-index: 100;
+    }
+
+    .floor-canvas-wrapper {
+      position: relative;
+      /* background: white; */
+      border-radius: 12px;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      aspect-ratio: 4 / 3;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      transition: all 0.3s ease;
+    }
+
+    .floor-card.active .floor-canvas-wrapper {
+      width: 100vw;
+      height: calc(100vh - 80px);
+      border-radius: 0;
+      box-shadow: none;
+      aspect-ratio: auto;
+    }
+
+    .floor-card.inactive .floor-canvas-wrapper {
+      width: 80%;
+      height: 60px;
+    }
+
+    .floor-canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+
+    .floor-svg-container {
+      width: 100%;
+      height: 100%;
+    }
+
+    .floor-svg-container svg {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .floor-label {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      background: rgba(102, 126, 234, 0.9);
+      color: white;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      z-index: 10;
+      pointer-events: none;
+    }
+
+    .floor-info {
+      position: absolute;
+      bottom: 12px;
+      left: 12px;
+      right: 12px;
+      /* background: rgba(0, 0, 0, 0.7); */
+      color: white;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+
+    .floor-card.active .floor-info {
+      opacity: 1;
+    }
+
+    .position-indicator {
+      position: absolute;
+      width: 12px;
+      height: 12px;
+      background: #ff6b6b;
+      border: 2px solid white;
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.2s ease;
+      z-index: 20;
+    }
+
+    .position-indicator.show {
+      opacity: 1;
+    }
+
+    .hint {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(255, 255, 255, 0.95);
+      color: #333;
+      padding: 12px 20px;
+      border-radius: 8px;
+      font-size: 12px;
+      text-align: center;
+      pointer-events: none;
+      z-index: 50;
+      max-width: 90%;
+      animation: slideUp 0.3s ease;
+    }
+
+    @keyframes slideUp {
+      from {
+        opacity: 0;
+        transform: translateX(-50%) translateY(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateX(-50%) translateY(-50%);
+      }
+    }
+
+    .hint.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .console-output {
+      position: fixed;
+      bottom: 80px;
+      right: 20px;
+      background: rgba(0, 0, 0, 0.9);
+      color: #0f0;
+      padding: 12px 16px;
+      border-radius: 8px;
+      font-family: 'Courier New', monospace;
+      font-size: 11px;
+      max-width: 300px;
+      max-height: 200px;
+      overflow-y: auto;
+      z-index: 50;
+      border: 1px solid #0f0;
+    }
+
+    .console-line {
+      margin: 4px 0;
+      word-break: break-all;
+    }
+
+    @media (max-width: 768px) {
+      .header h1 {
+        font-size: 24px;
+      }
+
+      .floors-stack {
+        width: 95vw;
+        max-width: 500px;
+      }
+
+      .console-output {
+        font-size: 10px;
+        padding: 8px 12px;
+        max-width: 280px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🏢 Interactive Floor Map</h1>
+      <p>Scroll to explore floors • Tap to pick position</p>
+    </div>
+
+    <div class="scroll-container">
+      <div class="floors-wrapper">
+        <div class="floors-stack" id="floorsStack">
+          <!-- Floor cards will be inserted here -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="hint" id="hint">Scroll to explore floors</div>
+  <div class="console-output" id="console"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script>
+    gsap.registerPlugin(ScrollTrigger);
+
+    const FLOOR_FILES = [
+      { id: "5", file: "5_F.svg", label: "5F" },
+      { id: "4", file: "4_F.svg", label: "4F" },
+      { id: "3", file: "3_F.svg", label: "3F" },
+      { id: "2", file: "2_F.svg", label: "2F" },
+      { id: "1", file: "1_F.svg", label: "1F" },
+      { id: "G", file: "G_F.svg", label: "G / Ground" }
+    ];
+
+    const state = {
+      activeFloor: null,
+      floors: []
+    };
+
+    const consoleEl = document.getElementById('console');
+    const hintEl = document.getElementById('hint');
+    const floorsStack = document.getElementById('floorsStack');
+
+    // Console logging
+    const log = (message) => {
+      const line = document.createElement('div');
+      line.className = 'console-line';
+      line.textContent = `> ${message}`;
+      consoleEl.appendChild(line);
+      consoleEl.scrollTop = consoleEl.scrollHeight;
+      
+      if (consoleEl.children.length > 10) {
+        consoleEl.removeChild(consoleEl.firstChild);
+      }
+    };
+
+    // Load SVG directly
+    const loadSVG = async (svgFile, container) => {
+      try {
+        const response = await fetch(svgFile);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const svgText = await response.text();
+
+        const parser = new DOMParser();
+        const svgDoc = parser.parseFromString(svgText, 'image/svg+xml');
+        const svgElement = svgDoc.querySelector('svg');
+        
+        if (!svgElement) throw new Error('No SVG element found');
+
+        // Set SVG to be responsive
+        svgElement.setAttribute('width', '100%');
+        svgElement.setAttribute('height', '100%');
+        svgElement.style.display = 'block';
+        svgElement.style.width = '100%';
+        svgElement.style.height = '100%';
+
+        // Clear container and append SVG
+        container.innerHTML = '';
+        container.appendChild(svgElement);
+
+        return true;
+      } catch (error) {
+        console.error(`Error loading ${svgFile}:`, error);
+        log(`Error loading ${svgFile}`);
+        return false;
+      }
+    };
+
+    // Create floor card
+    const createFloorCard = (floor, index) => {
+      const card = document.createElement('div');
+      card.className = 'floor-card';
+      card.dataset.floorId = floor.id;
+      card.dataset.index = index;
+
+      const wrapper = document.createElement('div');
+      wrapper.className = 'floor-canvas-wrapper';
+
+      const svgContainer = document.createElement('div');
+      svgContainer.className = 'floor-svg-container';
+      svgContainer.style.width = '100%';
+      svgContainer.style.height = '100%';
+      svgContainer.style.display = 'flex';
+      svgContainer.style.alignItems = 'center';
+      svgContainer.style.justifyContent = 'center';
+
+      const label = document.createElement('div');
+      label.className = 'floor-label';
+      label.textContent = floor.label;
+
+      const info = document.createElement('div');
+      info.className = 'floor-info';
+      info.textContent = 'Tap to pick position';
+
+      const indicator = document.createElement('div');
+      indicator.className = 'position-indicator';
+
+      wrapper.appendChild(svgContainer);
+      wrapper.appendChild(label);
+      wrapper.appendChild(info);
+      wrapper.appendChild(indicator);
+      card.appendChild(wrapper);
+
+      // Position picking on SVG
+      svgContainer.addEventListener('click', (e) => {
+        const rect = svgContainer.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+
+        // Get SVG element for coordinate mapping
+        const svg = svgContainer.querySelector('svg');
+        if (svg) {
+          const svgRect = svg.getBoundingClientRect();
+          const svgX = (x / svgRect.width) * svg.viewBox.baseVal.width;
+          const svgY = (y / svgRect.height) * svg.viewBox.baseVal.height;
+
+          // Show indicator
+          indicator.style.left = x + 'px';
+          indicator.style.top = y + 'px';
+          indicator.classList.add('show');
+
+          // Log to console
+          const message = `Floor: ${floor.label} | X: ${Math.round(svgX)} | Y: ${Math.round(svgY)}`;
+          log(message);
+          console.log({
+            floor: floor.label,
+            floorId: floor.id,
+            x: Math.round(svgX),
+            y: Math.round(svgY),
+            pixelX: Math.round(x),
+            pixelY: Math.round(y)
+          });
+
+          // Hide indicator after 2 seconds
+          setTimeout(() => {
+            indicator.classList.remove('show');
+          }, 2000);
+        }
+      });
+
+      return { card, svgContainer, floor, wrapper };
+    };
+
+    // Initialize floors
+    const initFloors = async () => {
+      log('Initializing floors...');
+
+      for (let i = 0; i < FLOOR_FILES.length; i++) {
+        const floor = FLOOR_FILES[i];
+        const { card, svgContainer, wrapper } = createFloorCard(floor, i);
+        floorsStack.appendChild(card);
+
+        // Load SVG directly
+        await loadSVG(floor.file, svgContainer);
+        
+        state.floors.push({
+          element: card,
+          wrapper,
+          floor,
+          index: i
+        });
+      }
+
+      log(`Loaded ${FLOOR_FILES.length} floors`);
+      setupScrollAnimation();
+    };
+
+    // Setup scroll animation with ScrollTrigger
+    const setupScrollAnimation = () => {
+      const totalFloors = state.floors.length;
+
+      // Create main scroll trigger
+      ScrollTrigger.create({
+        trigger: '.scroll-container',
+        start: 'top top',
+        end: 'bottom bottom',
+        scrub: 0.5,
+        onUpdate: (self) => {
+          const scrollProgress = self.progress;
+          const currentFloorIndex = Math.round(scrollProgress * (totalFloors - 1));
+
+          state.floors.forEach((floorData, index) => {
+            const card = floorData.element;
+            const wrapper = floorData.wrapper;
+            
+            // Calculate distance from current floor
+            const distance = Math.abs(index - scrollProgress * (totalFloors - 1));
+            const isCurrentFloor = distance < 0.5;
+            
+            // Smooth interpolation for all properties
+            const rotationX = isCurrentFloor ? 0 : Math.min(70, 45 + distance * 15);
+            const opacity = isCurrentFloor ? 1 : Math.max(0.2, 1 - distance * 0.4);
+            const scale = isCurrentFloor ? 1 : Math.max(0.6, 1 - distance * 0.2);
+            const blur = 0 //isCurrentFloor ? 0 : Math.min(3, distance * 1.5);
+            
+            // Calculate vertical position
+            const baseY = (index - scrollProgress * (totalFloors - 1)) * 150;
+            const yOffset = isCurrentFloor ? "-50%" : baseY;
+            
+            // Calculate z-depth
+            const zOffset = isCurrentFloor ? 250 : Math.max(-100, 100 - distance * 80);
+
+            // Animate card
+            gsap.to(card, {
+              rotationX: rotationX,
+              opacity: opacity,
+              scale: scale,
+              z: zOffset,
+              y: yOffset,
+              filter: `blur(${blur}px)`,
+              duration: 0.3,
+              ease: 'power2.out',
+              overwrite: 'auto'
+            });
+
+            // Update active state
+            const wasActive = card.classList.contains('active');
+            const shouldBeActive = isCurrentFloor;
+
+            if (wasActive !== shouldBeActive) {
+              card.classList.toggle('active', shouldBeActive);
+              card.classList.toggle('inactive', !shouldBeActive);
+              
+              if (shouldBeActive) {
+                state.activeFloor = floorData.floor;
+                log(`Focused: ${floorData.floor.label}`);
+              }
+            }
+          });
+        }
+      });
+
+      // Set initial state
+      state.floors.forEach((floorData, index) => {
+        const card = floorData.element;
+        const wrapper = floorData.wrapper;
+        const isInitialActive = index === 0;
+
+        gsap.set(card, {
+          rotationX: isInitialActive ? 0 : 60,
+          opacity: isInitialActive ? 1 : 0.3,
+          scale: isInitialActive ? 1 : 0.7,
+          z: isInitialActive ? 250 : 50,
+          y: index * 150,
+          filter: isInitialActive ? 'blur(0px)' : 'blur(3px)'
+        });
+
+        card.classList.toggle('active', isInitialActive);
+        card.classList.toggle('inactive', !isInitialActive);
+        
+        if (isInitialActive) {
+          state.activeFloor = floorData.floor;
+        }
+      });
+
+      log('Scroll animation ready');
+    };
+
+    // Start
+    initFloors();
+  </script>
+</body>
+</html>
